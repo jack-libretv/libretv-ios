@@ -1,19 +1,21 @@
 ﻿import UIKit
 import WebKit
 
-/// 全屏 WKWebView 外壳：启动先探测服务器，连不上给出文字提示，不出现黑屏。
+/// 全屏 WKWebView 外壳：顶部常驻一条原生状态条（永远可见，便于排查），
+/// 启动先探测服务器；连不上时给出明确原因，并提供「用 Safari 打开」兜底。
 final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDelegate {
 
     private static let serverKey = "libretv.server"
     private static let defaultServer = "http://192.168.0.100:8080"
+    private static let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
 
     private var webView: WKWebView!
     private let progress = UIProgressView(progressViewStyle: .bar)
     private var progressObservation: NSKeyValueObservation?
 
-    private let statusPill = UIView()
-    private let statusLabel = UILabel()
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let banner = UIView()
+    private let bannerTitle = UILabel()
+    private let bannerStatus = UILabel()
 
     private var errorAlertVisible = false
     private var probeTask: URLSessionDataTask?
@@ -25,7 +27,10 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.10, alpha: 1)
+        // 浅色底：任何情况下都能一眼区分「App 起来了」和「App 没起来」
+        view.backgroundColor = UIColor(red: 0.93, green: 0.95, blue: 0.98, alpha: 1)
+
+        setupBanner()
 
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
@@ -40,55 +45,26 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.isHidden = true
+        webView.backgroundColor = .white
+        webView.scrollView.backgroundColor = .white
         view.addSubview(webView)
 
         progress.translatesAutoresizingMaskIntoConstraints = false
-        progress.progressTintColor = .systemTeal
+        progress.progressTintColor = .systemBlue
         progress.trackTintColor = .clear
         progress.isHidden = true
         view.addSubview(progress)
 
-        // 状态提示胶囊
-        statusPill.translatesAutoresizingMaskIntoConstraints = false
-        statusPill.backgroundColor = UIColor(white: 0.15, alpha: 0.92)
-        statusPill.layer.cornerRadius = 14
-        statusPill.layer.masksToBounds = true
-        view.addSubview(statusPill)
-
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        spinner.color = .white
-        statusPill.addSubview(spinner)
-
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.textColor = .white
-        statusLabel.font = .systemFont(ofSize: 14)
-        statusLabel.numberOfLines = 0
-        statusLabel.textAlignment = .center
-        statusPill.addSubview(statusLabel)
-
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.topAnchor.constraint(equalTo: banner.bottomAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
             progress.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             progress.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            progress.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            progress.heightAnchor.constraint(equalToConstant: 2),
-
-            statusPill.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            statusPill.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            statusPill.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -40),
-
-            spinner.leadingAnchor.constraint(equalTo: statusPill.leadingAnchor, constant: 14),
-            spinner.centerYAnchor.constraint(equalTo: statusPill.centerYAnchor),
-
-            statusLabel.leadingAnchor.constraint(equalTo: spinner.trailingAnchor, constant: 8),
-            statusLabel.trailingAnchor.constraint(equalTo: statusPill.trailingAnchor, constant: -14),
-            statusLabel.topAnchor.constraint(equalTo: statusPill.topAnchor, constant: 12),
-            statusLabel.bottomAnchor.constraint(equalTo: statusPill.bottomAnchor, constant: -12)
+            progress.topAnchor.constraint(equalTo: banner.bottomAnchor),
+            progress.heightAnchor.constraint(equalToConstant: 2)
         ])
 
         progressObservation = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
@@ -98,55 +74,83 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
             self.progress.isHidden = value >= 1.0
         }
 
-        buildChrome()
+        buildToolbar()
+        setStatus("正在连接…")
         connect()
+    }
+
+    // MARK: - 顶部状态条
+
+    private func setupBanner() {
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        banner.backgroundColor = UIColor(red: 0.10, green: 0.16, blue: 0.28, alpha: 1)
+        view.addSubview(banner)
+
+        bannerTitle.translatesAutoresizingMaskIntoConstraints = false
+        bannerTitle.textColor = .white
+        bannerTitle.font = .systemFont(ofSize: 13, weight: .semibold)
+        bannerTitle.text = "LibreTV \(Self.appVersion) · \(serverURL.absoluteString)"
+        bannerTitle.lineBreakMode = .byTruncatingMiddle
+        banner.addSubview(bannerTitle)
+
+        bannerStatus.translatesAutoresizingMaskIntoConstraints = false
+        bannerStatus.textColor = UIColor(white: 0.85, alpha: 1)
+        bannerStatus.font = .systemFont(ofSize: 12)
+        bannerStatus.numberOfLines = 2
+        bannerStatus.text = "启动中…"
+        banner.addSubview(bannerStatus)
+
+        NSLayoutConstraint.activate([
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            banner.heightAnchor.constraint(equalToConstant: 50),
+
+            bannerTitle.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: 12),
+            bannerTitle.trailingAnchor.constraint(equalTo: banner.trailingAnchor, constant: -12),
+            bannerTitle.topAnchor.constraint(equalTo: banner.topAnchor, constant: 6),
+
+            bannerStatus.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: 12),
+            bannerStatus.trailingAnchor.constraint(equalTo: banner.trailingAnchor, constant: -12),
+            bannerStatus.topAnchor.constraint(equalTo: bannerTitle.bottomAnchor, constant: 2)
+        ])
+    }
+
+    private func setStatus(_ text: String) {
+        bannerStatus.text = text
+    }
+
+    private func buildToolbar() {
+        let back = UIBarButtonItem(title: "后退", style: .plain, target: self, action: #selector(goBack))
+        let home = UIBarButtonItem(title: "主页", style: .plain, target: self, action: #selector(reloadHome))
+        let refresh = UIBarButtonItem(title: "刷新", style: .plain, target: self, action: #selector(reload))
+        let settings = UIBarButtonItem(title: "设置", style: .plain, target: self, action: #selector(showSettings))
+        let safari = UIBarButtonItem(title: "Safari", style: .plain, target: self, action: #selector(openInSafari))
+        let spacer = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
+        toolbarItems = [back, spacer, home, spacer, refresh, spacer, settings, spacer, safari]
+        navigationItem.largeTitleDisplayMode = .never
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setToolbarHidden(false, animated: false)
-        navigationController?.setNavigationBarHidden(false, animated: false)
-    }
-
-    // MARK: - 界面
-
-    private func buildChrome() {
-        let back = UIBarButtonItem(title: "后退", style: .plain, target: self, action: #selector(goBack))
-        let home = UIBarButtonItem(title: "主页", style: .plain, target: self, action: #selector(reloadHome))
-        let refresh = UIBarButtonItem(title: "刷新", style: .plain, target: self, action: #selector(reload))
-        let settings = UIBarButtonItem(title: "设置", style: .plain, target: self, action: #selector(showSettings))
-        let spacer = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
-        toolbarItems = [back, spacer, home, spacer, refresh, spacer, settings]
-        navigationItem.title = "LibreTV"
-        navigationItem.largeTitleDisplayMode = .never
-    }
-
-    private func showStatus(_ text: String, spinning: Bool = true) {
-        statusLabel.text = text
-        statusPill.isHidden = false
-        if spinning { spinner.startAnimating() } else { spinner.stopAnimating() }
-    }
-
-    private func hideStatus() {
-        spinner.stopAnimating()
-        statusPill.isHidden = true
+        navigationController?.setNavigationBarHidden(true, animated: false)
     }
 
     // MARK: - 连接
 
     private func connect() {
         let url = serverURL
-        navigationItem.title = url.host ?? "LibreTV"
-        showStatus("正在连接\n\(url.absoluteString)")
+        bannerTitle.text = "LibreTV \(Self.appVersion) · \(url.absoluteString)"
+        setStatus("正在连接服务器…")
 
         probe(url) { [weak self] ok, message in
             guard let self = self else { return }
             if ok {
-                self.showStatus("已连上服务器，正在加载页面…")
-                self.webView.isHidden = false
-                self.webView.load(URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 20))
+                self.setStatus("连上了（" + message + "），正在加载页面…")
+                self.webView.load(URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 25))
             } else {
-                self.showStatus("连不上服务器\n\(message)\n\n点底部「设置」改地址，或「刷新」重试", spinning: false)
+                self.setStatus("连不上：" + message)
                 self.showErrorAlert(message)
             }
         }
@@ -156,16 +160,17 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         probeTask?.cancel()
         let conf = URLSessionConfiguration.ephemeral
         conf.timeoutIntervalForRequest = 8
-        conf.timeoutIntervalForResource = 10
+        conf.timeoutIntervalForResource = 12
         let session = URLSession(configuration: conf)
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-
-        probeTask = session.dataTask(with: request) { _, response, error in
+        probeTask = session.dataTask(with: URLRequest(url: url)) { _, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     let ns = error as NSError
-                    completion(false, "\(ns.localizedDescription)（\(ns.code)）")
+                    var hint = "\(ns.localizedDescription)（\(ns.code)）"
+                    if ns.code == -1009 || ns.code == -1003 || ns.code == -1004 || ns.code == -1001 {
+                        hint += "；若网络正常，去 设置→隐私→本地网络 允许 LibreTV"
+                    }
+                    completion(false, hint)
                     return
                 }
                 if let http = response as? HTTPURLResponse {
@@ -178,23 +183,19 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         probeTask?.resume()
     }
 
-    @objc private func reloadHome() {
-        connect()
-    }
+    @objc private func reloadHome() { connect() }
 
     @objc private func reload() {
-        if webView.url == nil || !statusPill.isHidden {
-            connect()
-        } else {
-            webView.reload()
-        }
+        if webView.url == nil { connect() } else { webView.reload() }
     }
 
     @objc private func goBack() {
-        if webView.canGoBack {
-            webView.goBack()
-        } else {
-            connect()
+        if webView.canGoBack { webView.goBack() } else { connect() }
+    }
+
+    @objc private func openInSafari() {
+        if UIApplication.shared.canOpenURL(serverURL) {
+            UIApplication.shared.open(serverURL, options: [:], completionHandler: nil)
         }
     }
 
@@ -202,7 +203,7 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         guard presentedViewController == nil else { return }
         let alert = UIAlertController(
             title: "服务器地址",
-            message: "填这台电脑上 LibreTV 的地址，例如 http://192.168.0.100:8080。",
+            message: "填电脑上 LibreTV 的地址，例如 http://192.168.0.100:8080（轻量版加 /lite.html）。",
             preferredStyle: .alert
         )
         alert.addTextField { field in
@@ -219,6 +220,7 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
             guard !text.isEmpty, URL(string: text) != nil else { return }
             UserDefaults.standard.set(text, forKey: Self.serverKey)
             self.errorAlertVisible = false
+            self.webView.url = nil
             self.connect()
         })
         present(alert, animated: true)
@@ -228,15 +230,13 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         progress.isHidden = false
+        setStatus("页面加载中…")
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         progress.isHidden = true
         errorAlertVisible = false
-        hideStatus()
-        if let host = webView.url?.host {
-            navigationItem.title = host
-        }
+        setStatus("已打开：" + (webView.url?.absoluteString ?? ""))
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -251,8 +251,8 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         let ns = error as NSError
         guard ns.code != NSURLErrorCancelled else { return }
         progress.isHidden = true
-        showStatus("页面加载失败\n\(ns.localizedDescription)（\(ns.code)）\n\n点底部「刷新」重试", spinning: false)
-        showErrorAlert(ns.localizedDescription)
+        setStatus("页面加载失败：\(ns.localizedDescription)（\(ns.code)）")
+        showErrorAlert(ns.localizedDescription + "（\(ns.code)）")
     }
 
     private func showErrorAlert(_ message: String) {
@@ -260,7 +260,7 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         errorAlertVisible = true
         let alert = UIAlertController(
             title: "连不上服务器",
-            message: "确认电脑上的 LibreTV 正在运行、手机与电脑在同一 Wi-Fi、电脑防火墙已放行 8080。\n\n\(message)",
+            message: "① 电脑上的 LibreTV 是否在运行；② 手机与电脑是否同一个 Wi-Fi；③ 设置→隐私→本地网络 里是否允许了 LibreTV。\n\n\(message)",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "重试", style: .default) { [weak self] _ in
@@ -270,6 +270,10 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         alert.addAction(UIAlertAction(title: "改地址", style: .default) { [weak self] _ in
             self?.errorAlertVisible = false
             self?.showSettings()
+        })
+        alert.addAction(UIAlertAction(title: "用 Safari 打开", style: .default) { [weak self] _ in
+            self?.errorAlertVisible = false
+            self?.openInSafari()
         })
         present(alert, animated: true)
     }
