@@ -1,0 +1,60 @@
+name: LibreTVShell
+options:
+  bundleIdPrefix: com.libretv
+  deploymentTarget:
+    iOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+targets:
+  LibreTVShell:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.libretv.shell
+        PRODUCT_NAME: LibreTV
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        GENERATE_INFOPLIST_FILE: "NO"
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleDisplayName: LibreTV
+        CFBundleName: LibreTV
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIViewControllerBasedStatusBarAppearance: false
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: 需要访问同一 Wi-Fi 下电脑上的 LibreTV 服务。
+        UIRequiredDeviceCapabilities:
+          - arm64
+schemes:
+  LibreTVShell:
+    build:
+      targets:
+        LibreTVShell: all
+    run:
+      config: Release
+    archive:
+      config: Release
