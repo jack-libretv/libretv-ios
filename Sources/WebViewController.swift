@@ -1,11 +1,11 @@
-import UIKit
+﻿import UIKit
 import WebKit
 
 /// 全屏 WKWebView 外壳：启动先探测服务器，连不上给出文字提示，不出现黑屏。
 final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDelegate {
 
     private static let serverKey = "libretv.server"
-    private static let defaultServer = "http://192.168.0.100:8080"
+    private static let defaultServer = "http://192.168.0.100:8080/lite.html"
 
     private var webView: WKWebView!
     private let progress = UIProgressView(progressViewStyle: .bar)
