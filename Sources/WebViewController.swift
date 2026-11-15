@@ -144,13 +144,15 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         bannerTitle.text = "LibreTV \(Self.appVersion) · \(url.absoluteString)"
         setStatus("正在连接服务器…")
 
+        // 先无条件加载页面：万一探测被系统权限挡住，页面本身仍有机会显示
+        webView.load(URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 25))
+
         probe(url) { [weak self] ok, message in
             guard let self = self else { return }
             if ok {
-                self.setStatus("连上了（" + message + "），正在加载页面…")
-                self.webView.load(URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 25))
+                self.setStatus("连上了（" + message + "）")
             } else {
-                self.setStatus("连不上：" + message)
+                self.setStatus("连不上：\(message)")
                 self.showErrorAlert(message)
             }
         }
