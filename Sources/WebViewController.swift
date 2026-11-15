@@ -5,7 +5,7 @@ import WebKit
 final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDelegate {
 
     private static let serverKey = "libretv.server"
-    private static let defaultServer = "http://192.168.0.100:8080/lite.html"
+    private static let defaultServer = "http://192.168.0.100:8080"
 
     private var webView: WKWebView!
     private let progress = UIProgressView(progressViewStyle: .bar)
