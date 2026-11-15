@@ -220,7 +220,7 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
             guard !text.isEmpty, URL(string: text) != nil else { return }
             UserDefaults.standard.set(text, forKey: Self.serverKey)
             self.errorAlertVisible = false
-            self.webView.url = nil
+            self.webView.stopLoading()
             self.connect()
         })
         present(alert, animated: true)
