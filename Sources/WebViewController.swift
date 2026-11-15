@@ -44,7 +44,37 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         buildToolbar()
 
         setStatus("正在连接…")
-        connect()
+        prepareCacheThenConnect()
+    }
+
+    /// WKWebView 会把 chunk 缓存很久；降级后的文件名没变，必须清掉旧缓存再用
+    private func prepareCacheThenConnect() {
+        let key = "libretv.cacheVersion"
+        guard UserDefaults.standard.string(forKey: key) != Self.appVersion else {
+            connect()
+            return
+        }
+        setStatus("正在清理旧缓存（首次启动会慢几秒）…")
+        let store = WKWebsiteDataStore.default()
+        store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { [weak self] in
+            UserDefaults.standard.set(Self.appVersion, forKey: key)
+            DispatchQueue.main.async {
+                self?.appendDiag("[缓存] 已清空旧缓存（版本 \(Self.appVersion)）")
+                self?.connect()
+            }
+        }
+    }
+
+    private func clearCacheAndReload() {
+        setStatus("正在清缓存…")
+        let store = WKWebsiteDataStore.default()
+        store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { [weak self] in
+            UserDefaults.standard.set(Self.appVersion, forKey: "libretv.cacheVersion")
+            DispatchQueue.main.async {
+                self?.appendDiag("[缓存] 手动清空完成")
+                self?.connect()
+            }
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -241,11 +271,14 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         let home = UIBarButtonItem(title: "主页", style: .plain, target: self, action: #selector(reloadHome))
         let refresh = UIBarButtonItem(title: "刷新", style: .plain, target: self, action: #selector(reload))
         let lite = UIBarButtonItem(title: "轻量版", style: .plain, target: self, action: #selector(openLite))
+        let clear = UIBarButtonItem(title: "清缓存", style: .plain, target: self, action: #selector(clearCache))
         let settings = UIBarButtonItem(title: "设置", style: .plain, target: self, action: #selector(showSettings))
         let safari = UIBarButtonItem(title: "Safari", style: .plain, target: self, action: #selector(openInSafari))
         let spacer = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
-        toolbarItems = [back, spacer, home, spacer, lite, spacer, refresh, spacer, settings, spacer, safari]
+        toolbarItems = [back, spacer, home, spacer, lite, spacer, clear, spacer, settings, spacer, safari]
     }
+
+    @objc private func clearCache() { clearCacheAndReload() }
 
     // MARK: - 连接
 
